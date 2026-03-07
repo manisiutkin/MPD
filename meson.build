@@ -314,12 +314,31 @@ enable_database = get_option('database')
 enable_inotify = get_option('inotify') and is_linux and enable_database
 conf.set('ENABLE_INOTIFY', enable_inotify)
 
+enable_sacdiso = get_option('sacdiso')
+conf.set('ENABLE_SACDISO', enable_sacdiso)
+
+enable_dvdaiso = get_option('dvdaiso')
+conf.set('ENABLE_DVDAISO', enable_dvdaiso)
+
 inc = include_directories(
   'src',
 
   # for the generated config.h
   '.',
 )
+
+if enable_sacdiso or enable_dvdaiso
+  inc = include_directories(
+    'src',
+	'.',
+	'src/lib/sacdiso',
+	'src/lib/sacdiso/libdstdec',
+	'src/lib/sacdiso/libdstdec/binding',
+	'src/lib/sacdiso/libdstdec/decoder',
+	'src/lib/dvdaiso',
+	'src/lib/dvdaiso/udf',
+  )
+endif
 
 subdir('src/lib/fmt')
 
@@ -528,6 +547,14 @@ subdir('src/encoder')
 subdir('src/song')
 subdir('src/playlist')
 
+if enable_sacdiso
+  subdir('src/lib/sacdiso')
+endif
+
+if enable_dvdaiso
+  subdir('src/lib/dvdaiso')
+endif
+
 if curl_dep.found()
   sources += 'src/RemoteTagCache.cxx'
 endif
@@ -610,6 +637,18 @@ else
   target_type = 'executable'
   target_name = 'mpd'
   install_dir = get_option('bindir')
+endif
+
+if enable_sacdiso
+  more_deps += [
+    sacdiso_dep,
+  ]
+endif
+
+if enable_dvdaiso
+  more_deps += [
+    dvdaiso_dep,
+  ]
 endif
 
 mpd = build_target(

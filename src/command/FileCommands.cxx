@@ -279,6 +279,43 @@ read_db_art(Client &client, Response &r, const char *uri, const uint64_t offset)
 }
 #endif
 
+/**
+ * Fix for ISO/DFF container names
+ */
+class FixIsoOrDffUri {
+	static constexpr std::array exts {
+		".dff",
+		".dar",
+		".iso",
+		".sid",
+	};
+	std::string fixUri;
+public:
+	FixIsoOrDffUri(const char *uri) {
+		fixUri = uri;
+		auto endsWithSeparator{ false };		
+		if (fixUri.ends_with(PathTraitsUTF8::SEPARATOR)) {
+			endsWithSeparator = true;
+			fixUri.pop_back();
+		}
+		for (auto& ext : exts) {
+			if (StringEndsWithIgnoreCase(fixUri.data(), ext)) {
+				fixUri.erase(fixUri.find_last_of(PathTraitsUTF8::SEPARATOR));
+				if (!StringEndsWithIgnoreCase(fixUri.data(), ext)) {
+					endsWithSeparator = true;
+				}
+				break;
+			}
+		}
+		if (endsWithSeparator) {
+			fixUri += PathTraitsUTF8::SEPARATOR;
+		}
+	}
+	operator const char *() {
+		return fixUri.data();
+	}
+};
+
 CommandResult
 handle_album_art(Client &client, Request args, Response &r)
 {
@@ -286,6 +323,9 @@ handle_album_art(Client &client, Request args, Response &r)
 
 	const char *uri = args.front();
 	size_t offset = args.ParseUnsigned(1);
+
+	FixIsoOrDffUri fixUri(uri);
+	uri = fixUri;
 
 	const auto located_uri = LocateUri(UriPluginKind::INPUT, uri, &client
 #ifdef ENABLE_DATABASE
@@ -364,7 +404,7 @@ handle_read_picture(Client &client, Request args, Response &r)
 {
 	assert(args.size() == 2);
 
-	const char *const uri = args.front();
+	const char * uri = args.front();
 	const size_t offset = args.ParseUnsigned(1);
 
 	PrintPictureHandler handler(r, offset);
