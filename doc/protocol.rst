@@ -354,6 +354,7 @@ The following tags are supported by :program:`MPD`:
   <http://id3.org/id3v2.4.0-frames>`_).
 * **comment**: a human-readable comment about this song. The exact meaning of this tag is not well-defined.
 * **disc**: the decimal disc number in a multi-disc album.
+* **discsubtitle**: the disc subtitle in a multi-disc album.
 * **label**: the name of the label or publisher.
 * **musicbrainz_artistid**: the artist id in the `MusicBrainz <https://picard.musicbrainz.org/docs/mappings/>`_ database.
 * **musicbrainz_albumid**: the album id in the `MusicBrainz <https://picard.musicbrainz.org/docs/mappings/>`_ database.
@@ -1113,7 +1114,7 @@ The music database
 
     This is currently implemented by searching the directory the file
     resides in for a file called :file:`cover.png`, :file:`cover.jpg`,
-    or :file:`cover.webp`.
+    :file:`cover.jxl`, or :file:`cover.webp`.
 
     Returns the file size and actual number
     of bytes read at the requested offset, followed

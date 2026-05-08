@@ -25,9 +25,12 @@
 #include "fs/AllocatedPath.hxx"
 #include "util/Domain.hxx"
 #include "util/StringCompare.hxx"
+#include "util/StringSplit.hxx"
 #include "Log.hxx"
 
 #include <stdexcept>
+
+using std::string_view_literals::operator""sv;
 
 static constexpr Domain udisks_domain("udisks");
 
@@ -151,7 +154,7 @@ UdisksStorage::SetMountPoint(Path mount_point)
 void
 UdisksStorage::LockSetMountPoint(Path mount_point)
 {
-	const std::scoped_lock lock{mutex};
+	const std::lock_guard lock{mutex};
 	SetMountPoint(mount_point);
 }
 
@@ -183,7 +186,7 @@ UdisksStorage::OnListReply(ODBus::Message reply) noexcept
 			return;
 		}
 	} catch (...) {
-		const std::scoped_lock lock{mutex};
+		const std::lock_guard lock{mutex};
 		mount_error = std::current_exception();
 		want_mount = false;
 		cond.notify_all();
@@ -239,7 +242,7 @@ try {
 	mount_request.Send(connection, *msg.Get(),
 			   [this](auto o) { return OnMountNotify(std::move(o)); });
 } catch (...) {
-	const std::scoped_lock lock{mutex};
+	const std::lock_guard lock{mutex};
 	mount_error = std::current_exception();
 	want_mount = false;
 	cond.notify_all();
@@ -258,7 +261,7 @@ try {
 	const char *mount_path = i.GetString();
 	LockSetMountPoint(Path::FromFS(mount_path));
 } catch (...) {
-	const std::scoped_lock lock{mutex};
+	const std::lock_guard lock{mutex};
 	mount_error = std::current_exception();
 	want_mount = false;
 	cond.notify_all();
@@ -296,7 +299,7 @@ try {
 	mount_request.Send(connection, *msg.Get(),
 			   [this](auto u) { return OnUnmountNotify(std::move(u)); });
 } catch (...) {
-	const std::scoped_lock lock{mutex};
+	const std::lock_guard lock{mutex};
 	mount_error = std::current_exception();
 	mounted_storage.reset();
 	cond.notify_all();
@@ -308,12 +311,12 @@ try {
 	using namespace ODBus;
 	reply.CheckThrowError();
 
-	const std::scoped_lock lock{mutex};
+	const std::lock_guard lock{mutex};
 	mount_error = {};
 	mounted_storage.reset();
 	cond.notify_all();
 } catch (...) {
-	const std::scoped_lock lock{mutex};
+	const std::lock_guard lock{mutex};
 	mount_error = std::current_exception();
 	mounted_storage.reset();
 	cond.notify_all();
@@ -345,31 +348,23 @@ UdisksStorage::MapToRelativeUTF8(std::string_view uri_utf8) const noexcept
 }
 
 static std::unique_ptr<Storage>
-CreateUdisksStorageURI(EventLoop &event_loop, const char *base_uri)
+CreateUdisksStorageURI(EventLoop &event_loop, std::string_view base_uri)
 {
-	const char *id_begin = StringAfterPrefix(base_uri, "udisks://");
-	if (id_begin == nullptr)
+	const std::string_view id_begin = StringAfterPrefix(base_uri, "udisks://");
+	if (id_begin.data() == nullptr)
 		return nullptr;
 
-	std::string id;
+	auto [id, relative_path] = Split(id_begin, '/');
 
-	const char *relative_path = std::strchr(id_begin, '/');
-	if (relative_path == nullptr) {
-		id = id_begin;
-		relative_path = "";
-	} else {
-		id = {id_begin, relative_path};
-		++relative_path;
-		while (*relative_path == '/')
-			++relative_path;
-	}
+	while (relative_path.starts_with('/'))
+		relative_path = relative_path.substr(1);
 
-	auto inside_path = *relative_path != 0
+	auto inside_path = !relative_path.empty()
 		? AllocatedPath::FromUTF8Throw(relative_path)
 		: nullptr;
 
 	return std::make_unique<UdisksStorage>(event_loop, base_uri,
-					       std::move(id),
+					       id,
 					       std::move(inside_path));
 }
 

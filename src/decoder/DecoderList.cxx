@@ -37,6 +37,7 @@
 #include "plugins/MpcdecDecoderPlugin.hxx"
 #include "plugins/FluidsynthDecoderPlugin.hxx"
 #include "plugins/SidplayDecoderPlugin.hxx"
+#include "plugins/PsgplayDecoderPlugin.hxx"
 #include "Log.hxx"
 #include "PluginUnavailable.hxx"
 
@@ -85,6 +86,9 @@ constinit const struct DecoderPlugin *const decoder_plugins[] = {
 #endif
 #ifdef ENABLE_SIDPLAY
 	&sidplay_decoder_plugin,
+#endif
+#ifdef ENABLE_PSGPLAY
+	&psgplay_decoder_plugin,
 #endif
 #ifdef ENABLE_WILDMIDI
 	&wildmidi_decoder_plugin,

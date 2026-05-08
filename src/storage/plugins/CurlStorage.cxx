@@ -43,7 +43,7 @@ class CurlStorage final : public Storage {
 	CurlInit curl;
 
 public:
-	CurlStorage(EventLoop &_loop, const char *_base)
+	CurlStorage(EventLoop &_loop, std::string_view _base)
 		:base(_base),
 		 curl(_loop) {}
 
@@ -130,7 +130,7 @@ protected:
 	}
 
 	void LockSetDone() {
-		const std::scoped_lock lock{mutex};
+		const std::lock_guard lock{mutex};
 		SetDone();
 	}
 
@@ -148,7 +148,7 @@ private:
 
 	/* virtual methods from CurlResponseHandler */
 	void OnError(std::exception_ptr e) noexcept final {
-		const std::scoped_lock lock{mutex};
+		const std::lock_guard lock{mutex};
 		postponed_error = std::move(e);
 		SetDone();
 	}
@@ -562,7 +562,7 @@ CurlStorage::OpenDirectory(std::string_view uri_utf8)
 }
 
 static std::unique_ptr<Storage>
-CreateCurlStorageURI(EventLoop &event_loop, const char *uri)
+CreateCurlStorageURI(EventLoop &event_loop, std::string_view uri)
 {
 	return std::make_unique<CurlStorage>(event_loop, uri);
 }

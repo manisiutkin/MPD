@@ -87,7 +87,7 @@ public:
 	explicit DetachedSong(const char *_uri) noexcept
 		:uri(_uri) {}
 
-	explicit DetachedSong(const std::string &_uri) noexcept
+	explicit DetachedSong(std::string_view _uri) noexcept
 		:uri(_uri) {}
 
 	explicit DetachedSong(std::string &&_uri) noexcept
@@ -160,13 +160,13 @@ public:
 			end_time == other.end_time;
 	}
 
-	[[gnu::pure]] [[gnu::nonnull]]
-	bool IsURI(const char *other_uri) const noexcept {
+	[[gnu::pure]]
+	bool IsURI(const std::string_view other_uri) const noexcept {
 		return uri == other_uri;
 	}
 
-	[[gnu::pure]] [[gnu::nonnull]]
-	bool IsRealURI(const char *other_uri) const noexcept {
+	[[gnu::pure]]
+	bool IsRealURI(const std::string_view other_uri) const noexcept {
 		return (HasRealURI() ? real_uri : uri) == other_uri;
 	}
 

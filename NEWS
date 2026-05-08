@@ -3,23 +3,43 @@ ver 0.25 (not yet released)
   - implement "window" parameter for command "list"
   - new command "stringnormalization"
   - show detailed seek errors
+  - support filename "cover.jxl" for "albumart" command
 * decoder
   - faad: implement seeking
   - faad: output 32 bit floating point samples instead of 16 bit integer
+  - psgplay: new plugin
   - vgmstream: new plugin
 * output
   - pipewire: add option "reconnect_stream"
+* tags
+  - new tag "DiscSubtitle"
 * player
   - support replay gain parameter in stream URI
   - preallocate physical RAM for audio buffer when playback starts
+* configuration
+  - support $XDG_DATA_HOME, $XDG_STATE_HOME
 * switch to C++23
 * require Meson 1.2
 
-ver 0.24.9 (not yet released)
+ver 0.24.10 (2026/05/06)
+* input
+  - cache: fix deadlock bug
+* decoder
+  - sidplay: support millisecond-precision time stamps
+  - sidplay: support libsidplayfp version 3
+* database
+  - upnp: allow building with libupnp 1.14.30 which has fixed the API breakage
+* Windows
+  - work around build failure due to zlib bug
+
+ver 0.24.9 (2026/03/11)
 * input
   - curl: fix build failure after CURL 8.19 API change
+* output
+  - fix auto-reopen after error times out
 * database
   - upnp: refuse to build with libupnp >= 1.14.26 due to API breakage
+* abort if threads were created by a library during process startup
 
 ver 0.24.8 (2026/01/26)
 * input
