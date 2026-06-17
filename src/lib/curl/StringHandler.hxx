@@ -5,30 +5,42 @@
 #pragma once
 
 #include "Handler.hxx"
+#include "StringOptions.hxx"
 #include "StringResponse.hxx"
+
+namespace Curl {
 
 /**
  * A #CurlResponseHandler implementation which stores the response
  * body in a std::string.
  */
-class StringCurlResponseHandler : public CurlResponseHandler {
-	StringCurlResponse response;
+class StringResponseHandler : public CurlResponseHandler {
+	const StringOptions options;
+
+	StringResponse response;
 
 	std::exception_ptr error;
 
 public:
+	[[nodiscard]]
+	StringResponseHandler() noexcept = default;
+
+	[[nodiscard]]
+	explicit StringResponseHandler(StringOptions &_options) noexcept
+		:options(_options) {}
+
 	void CheckRethrowError() const {
 		if (error)
 			std::rethrow_exception(error);
 	}
 
-	const StringCurlResponse &GetResponse() const {
+	const StringResponse &GetResponse() const {
 		CheckRethrowError();
 
 		return std::move(response);
 	}
 
-	StringCurlResponse TakeResponse() && {
+	StringResponse TakeResponse() && {
 		CheckRethrowError();
 
 		return std::move(response);
@@ -41,3 +53,5 @@ public:
 	void OnEnd() override;
 	void OnError(std::exception_ptr e) noexcept override;
 };
+
+} // namespace Curl

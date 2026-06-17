@@ -1,7 +1,23 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright The Music Player Daemon Project
 
-/*
+#pragma once
+
+#include "Match.hxx"
+#include "lib/sqlite/Database.hxx"
+#include "protocol/RangeArg.hxx"
+
+#include <sqlite3.h>
+
+#include <map>
+#include <string>
+#include <list>
+
+namespace Co { template<typename T> class Generator; }
+class Path;
+struct Sticker;
+
+/**
  * This is the sticker database library.  It is the backend of all the
  * sticker code in MPD.
  *
@@ -22,23 +38,6 @@
  * ...
  *
  */
-
-#ifndef MPD_STICKER_DATABASE_HXX
-#define MPD_STICKER_DATABASE_HXX
-
-#include "Match.hxx"
-#include "lib/sqlite/Database.hxx"
-#include "protocol/RangeArg.hxx"
-
-#include <sqlite3.h>
-
-#include <map>
-#include <string>
-#include <list>
-
-class Path;
-struct Sticker;
-
 class StickerDatabase {
 	enum SQL {
 		  SQL_GET,
@@ -108,7 +107,7 @@ public:
 	 *
 	 * Throws #SqliteError on error.
 	 */
-	std::string LoadValue(const char *type, const char *uri,
+	std::string LoadValue(const char *type, std::string_view uri,
 			      const char *name);
 
 	/**
@@ -117,7 +116,7 @@ public:
 	 *
 	 * Throws #SqliteError on error.
 	 */
-	void StoreValue(const char *type, const char *uri,
+	void StoreValue(const char *type, std::string_view uri,
 			const char *name, const char *value);
 	
 	/**
@@ -126,7 +125,7 @@ public:
 	 *
 	 * Throws #SqliteError on error.
 	 */
-	void IncValue(const char *type, const char *uri,
+	void IncValue(const char *type, std::string_view uri,
 		      const char *name, const char *value);
 
 	/**
@@ -135,7 +134,7 @@ public:
 	 *
 	 * Throws #SqliteError on error.
 	 */
-	void DecValue(const char *type, const char *uri,
+	void DecValue(const char *type, std::string_view uri,
 		      const char *name, const char *value);
 
 	/**
@@ -144,7 +143,7 @@ public:
 	 *
 	 * Throws #SqliteError on error.
 	 */
-	bool Delete(const char *type, const char *uri);
+	bool Delete(const char *type, std::string_view uri);
 
 	/**
 	 * Deletes a sticker value.  Fails if no sticker with this name
@@ -152,7 +151,7 @@ public:
 	 *
 	 * Throws #SqliteError on error.
 	 */
-	bool DeleteValue(const char *type, const char *uri, const char *name);
+	bool DeleteValue(const char *type, std::string_view uri, const char *name);
 
 	/**
 	 * Loads the sticker for the specified resource.
@@ -163,7 +162,12 @@ public:
 	 * @param uri the URI of the resource, e.g. the song path
 	 * @return a sticker object
 	 */
-	Sticker Load(const char *type, const char *uri);
+	Sticker Load(const char *type, std::string_view uri);
+
+	struct FindRecord {
+		const char *uri;
+		const char *value;
+	};
 
 	/**
 	 * Finds stickers with the specified name below the specified URI.
@@ -175,22 +179,24 @@ public:
 	 * @param op the comparison operator
 	 * @param value the operand
 	 */
-	void Find(const char *type, const char *base_uri, const char *name,
-		  StickerOperator op, const char *value,
-		  const char *sort, bool descending, RangeArg window,
-		  void (*func)(const char *uri, const char *value,
-			       void *user_data),
-		  void *user_data);
+	Co::Generator<FindRecord> Find(const char *type, std::string_view base_uri, const char *name,
+				       StickerOperator op, const char *value,
+				       const char *sort, bool descending, RangeArg window);
 
 	/**
 	 * Uniq and sorted list of all sticker names
 	 */
-	void Names(void (*func)(const char *value, void *user_data), void *user_data);
+	Co::Generator<const char *> Names();
+
+	struct NameTypeRecord {
+		const char *value;
+		const char *type;
+	};
 
 	/**
 	 * Uniq and sorted list of all sticker names by type
 	 */
-	void NamesTypes(const char *type, void (*func)(const char *value, const char *type, void *user_data), void *user_data);
+	Co::Generator<NameTypeRecord> NamesTypes(const char *type);
 
 	using StickerTypeUriPair = std::pair<std::string, std::string>;
 
@@ -203,23 +209,22 @@ public:
 	/**
 	 * Delete stickers by type and uri
 	 * @param stickers A list of stickers to delete
+	 * @return the number of deleted records
 	 */
-	void BatchDeleteNoIdle(const std::list<StickerTypeUriPair> &stickers);
+	std::size_t BatchDeleteNoIdle(const std::list<StickerTypeUriPair> &stickers);
 
 private:
 	void ListValues(std::map<std::string, std::string, std::less<>> &table,
-			const char *type, const char *uri);
+			const char *type, std::string_view uri);
 
-	bool UpdateValue(const char *type, const char *uri,
+	bool UpdateValue(const char *type, std::string_view uri,
 			 const char *name, const char *value);
 
-	void InsertValue(const char *type, const char *uri,
+	void InsertValue(const char *type, std::string_view uri,
 			 const char *name, const char *value);
 
-	sqlite3_stmt *BindFind(const char *type, const char *base_uri,
+	sqlite3_stmt *BindFind(const char *type, std::string_view base_uri,
 			       const char *name,
 			       StickerOperator op, const char *value,
 				   const char *sort, bool descending, RangeArg window);
 };
-
-#endif

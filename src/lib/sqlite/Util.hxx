@@ -8,8 +8,6 @@
 
 #include <sqlite3.h>
 
-#include <cassert>
-
 namespace Sqlite {
 
 static inline sqlite3_stmt *
@@ -25,49 +23,10 @@ Prepare(sqlite3 *db, const char *sql)
 }
 
 /**
- * Throws #SqliteError on error.
- */
-static void
-Bind(sqlite3_stmt *stmt, unsigned i, const char *value)
-{
-	int result = sqlite3_bind_text(stmt, i, value, -1, nullptr);
-	if (result != SQLITE_OK)
-		throw SqliteError(stmt, result, "sqlite3_bind_text() failed");
-}
-
-template<typename... Args>
-static void
-BindAll2([[maybe_unused]] sqlite3_stmt *stmt, [[maybe_unused]] unsigned i)
-{
-	assert(int(i - 1) == sqlite3_bind_parameter_count(stmt));
-}
-
-template<typename... Args>
-static void
-BindAll2(sqlite3_stmt *stmt, unsigned i,
-	 const char *value, Args&&... args)
-{
-	Bind(stmt, i, value);
-	BindAll2(stmt, i + 1, std::forward<Args>(args)...);
-}
-
-/**
- * Throws #SqliteError on error.
- */
-template<typename... Args>
-static void
-BindAll(sqlite3_stmt *stmt, Args&&... args)
-{
-	assert(int(sizeof...(args)) == sqlite3_bind_parameter_count(stmt));
-
-	BindAll2(stmt, 1, std::forward<Args>(args)...);
-}
-
-/**
  * Call sqlite3_stmt() repepatedly until something other than
  * SQLITE_BUSY is returned.
  */
-static int
+static inline int
 ExecuteBusy(sqlite3_stmt *stmt)
 {
 	int result;
@@ -83,7 +42,7 @@ ExecuteBusy(sqlite3_stmt *stmt)
  *
  * Throws #SqliteError on error.
  */
-static bool
+static inline bool
 ExecuteRow(sqlite3_stmt *stmt)
 {
 	int result = ExecuteBusy(stmt);
@@ -102,7 +61,7 @@ ExecuteRow(sqlite3_stmt *stmt)
  *
  * Throws #SqliteError on error.
  */
-static void
+static inline void
 ExecuteCommand(sqlite3_stmt *stmt)
 {
 	int result = ExecuteBusy(stmt);
@@ -134,26 +93,6 @@ static inline bool
 ExecuteModified(sqlite3_stmt *stmt)
 {
 	return ExecuteChanges(stmt) > 0;
-}
-
-template<typename F>
-static inline void
-ExecuteForEach(sqlite3_stmt *stmt, F &&f)
-{
-	while (true) {
-		int result = ExecuteBusy(stmt);
-		switch (result) {
-		case SQLITE_ROW:
-			f();
-			break;
-
-		case SQLITE_DONE:
-			return;
-
-		default:
-			throw SqliteError(stmt, result, "sqlite3_step() failed");
-		}
-	}
 }
 
 } // namespace Sqlite

@@ -3,6 +3,9 @@
 
 #include "Database.hxx"
 #include "Sticker.hxx"
+#include "lib/sqlite/Bind.hxx"
+#include "lib/sqlite/Generator.hxx"
+#include "lib/sqlite/Row.hxx"
 #include "lib/sqlite/Util.hxx"
 #include "fs/Path.hxx"
 #include "fs/NarrowPath.hxx"
@@ -180,12 +183,11 @@ StickerDatabase::~StickerDatabase() noexcept
 }
 
 std::string
-StickerDatabase::LoadValue(const char *type, const char *uri, const char *name)
+StickerDatabase::LoadValue(const char *type, std::string_view uri, const char *name)
 {
 	sqlite3_stmt *const s = stmt[STICKER_SQL_GET];
 
 	assert(type != nullptr);
-	assert(uri != nullptr);
 	assert(name != nullptr);
 
 	if (StringIsEmpty(name))
@@ -207,12 +209,11 @@ StickerDatabase::LoadValue(const char *type, const char *uri, const char *name)
 
 void
 StickerDatabase::ListValues(std::map<std::string, std::string, std::less<>> &table,
-			    const char *type, const char *uri)
+			    const char *type, std::string_view uri)
 {
 	sqlite3_stmt *const s = stmt[STICKER_SQL_LIST];
 
 	assert(type != nullptr);
-	assert(uri != nullptr);
 
 	BindAll(s, type, uri);
 
@@ -221,19 +222,18 @@ StickerDatabase::ListValues(std::map<std::string, std::string, std::less<>> &tab
 		sqlite3_clear_bindings(s);
 	};
 
-	ExecuteForEach(s, [s, &table](){
-		const char *name = (const char *)sqlite3_column_text(s, 0);
-		const char *value = (const char *)sqlite3_column_text(s, 1);
+	for (const auto &row : GenerateRows(*s)) {
+		const char *name = row[0];
+		const char *value = row[1];
 		table.emplace(name, value);
-	});
+	}
 }
 
 void
-StickerDatabase::StoreValue(const char *type, const char *uri,
+StickerDatabase::StoreValue(const char *type, std::string_view uri,
 			    const char *name, const char *value)
 {
 	assert(type != nullptr);
-	assert(uri != nullptr);
 	assert(name != nullptr);
 	assert(*name != 0);
 	assert(value != nullptr);
@@ -252,13 +252,12 @@ StickerDatabase::StoreValue(const char *type, const char *uri,
 }
 
 void
-StickerDatabase::IncValue(const char *type, const char *uri,
+StickerDatabase::IncValue(const char *type, std::string_view uri,
 			  const char *name, const char *value)
 {
 	sqlite3_stmt *const s = stmt[STICKER_SQL_INC];
 
 	assert(type != nullptr);
-	assert(uri != nullptr);
 	assert(name != nullptr);
 	assert(*name != 0);
 	assert(value != nullptr);
@@ -275,13 +274,12 @@ StickerDatabase::IncValue(const char *type, const char *uri,
 }
 
 void
-StickerDatabase::DecValue(const char *type, const char *uri,
+StickerDatabase::DecValue(const char *type, std::string_view uri,
 			  const char *name, const char *value)
 {
 	sqlite3_stmt *const s = stmt[STICKER_SQL_DEC];
 
 	assert(type != nullptr);
-	assert(uri != nullptr);
 	assert(name != nullptr);
 	assert(*name != 0);
 	assert(value != nullptr);
@@ -298,12 +296,11 @@ StickerDatabase::DecValue(const char *type, const char *uri,
 }
 
 bool
-StickerDatabase::Delete(const char *type, const char *uri)
+StickerDatabase::Delete(const char *type, std::string_view uri)
 {
 	sqlite3_stmt *const s = stmt[STICKER_SQL_DELETE];
 
 	assert(type != nullptr);
-	assert(uri != nullptr);
 
 	BindAll(s, type, uri);
 
@@ -319,13 +316,12 @@ StickerDatabase::Delete(const char *type, const char *uri)
 }
 
 bool
-StickerDatabase::DeleteValue(const char *type, const char *uri,
+StickerDatabase::DeleteValue(const char *type, std::string_view uri,
 			     const char *name)
 {
 	sqlite3_stmt *const s = stmt[STICKER_SQL_DELETE_VALUE];
 
 	assert(type != nullptr);
-	assert(uri != nullptr);
 	assert(name != nullptr);
 
 	BindAll(s, type, uri, name);
@@ -342,7 +338,7 @@ StickerDatabase::DeleteValue(const char *type, const char *uri,
 }
 
 Sticker
-StickerDatabase::Load(const char *type, const char *uri)
+StickerDatabase::Load(const char *type, std::string_view uri)
 {
 	Sticker s;
 
@@ -352,16 +348,13 @@ StickerDatabase::Load(const char *type, const char *uri)
 }
 
 sqlite3_stmt *
-StickerDatabase::BindFind(const char *type, const char *base_uri,
+StickerDatabase::BindFind(const char *type, std::string_view base_uri,
 			  const char *name,
 			  StickerOperator op, const char *value,
 			  const char *sort, bool descending, RangeArg window)
 {
 	assert(type != nullptr);
 	assert(name != nullptr);
-
-	if (base_uri == nullptr)
-		base_uri = "";
 
 	auto order_by = StringIsEmpty(sort)
 		? std::string()
@@ -446,16 +439,11 @@ StickerDatabase::BindFind(const char *type, const char *base_uri,
 	std::unreachable();
 }
 
-void
-StickerDatabase::Find(const char *type, const char *base_uri, const char *name,
+Co::Generator<StickerDatabase::FindRecord>
+StickerDatabase::Find(const char *type, std::string_view base_uri, const char *name,
 		      StickerOperator op, const char *value,
-			  const char *sort, bool descending, RangeArg window,
-		      void (*func)(const char *uri, const char *value,
-				   void *user_data),
-		      void *user_data)
+		      const char *sort, bool descending, RangeArg window)
 {
-	assert(func != nullptr);
-
 	sqlite3_stmt *const s = BindFind(type, base_uri, name, op, value, sort, descending, window);
 	assert(s != nullptr);
 
@@ -463,11 +451,8 @@ StickerDatabase::Find(const char *type, const char *base_uri, const char *name,
 		sqlite3_finalize(s);
 	};
 
-	ExecuteForEach(s, [s, func, user_data](){
-			func((const char*)sqlite3_column_text(s, 0),
-			     (const char*)sqlite3_column_text(s, 1),
-			     user_data);
-		});
+	for (const auto &row : GenerateRows(*s))
+		co_yield FindRecord{row[0], row[1]};
 }
 
 std::list<StickerDatabase::StickerTypeUriPair>
@@ -479,18 +464,16 @@ StickerDatabase::GetUniqueStickers()
 	AtScopeExit(s) {
 		sqlite3_reset(s);
 	};
-	ExecuteForEach(s, [&s, &result]() {
-		result.emplace_back((const char*)sqlite3_column_text(s, 0),
-				    (const char*)sqlite3_column_text(s, 1));
-	});
+
+	for (const auto &row : GenerateRows(*s))
+		result.emplace_back(row[0], row[1]);
+
 	return result;
 }
 
-void
-StickerDatabase::Names(void (*func)(const char *value, void *user_data), void *user_data)
+Co::Generator<const char *>
+StickerDatabase::Names()
 {
-	assert(func != nullptr);
-
 	sqlite3_stmt *const s = stmt[STICKER_SQL_NAMES];
 	assert(s != nullptr);
 
@@ -498,16 +481,13 @@ StickerDatabase::Names(void (*func)(const char *value, void *user_data), void *u
 		sqlite3_reset(s);
 	};
 
-	ExecuteForEach(s, [s, func, user_data](){
-			func((const char*)sqlite3_column_text(s, 0), user_data);
-		});
+	for (const auto &row : GenerateRows(*s))
+		co_yield row[0];
 }
 
-void
-StickerDatabase::NamesTypes(const char *type, void (*func)(const char *value, const char *type, void *user_data), void *user_data)
+Co::Generator<StickerDatabase::NameTypeRecord>
+StickerDatabase::NamesTypes(const char *type)
 {
-	assert(func != nullptr);
-
 	sqlite3_stmt *const s = type == nullptr
 		? stmt[STICKER_SQL_NAMES_TYPES]
 		: stmt[STICKER_SQL_NAMES_TYPES_BY_TYPE];
@@ -520,13 +500,11 @@ StickerDatabase::NamesTypes(const char *type, void (*func)(const char *value, co
 		sqlite3_reset(s);
 	};
 
-	ExecuteForEach(s, [s, func, user_data](){
-			func((const char*)sqlite3_column_text(s, 0),
-			     (const char*)sqlite3_column_text(s, 1), user_data);
-		});
+	for (const auto &row : GenerateRows(*s))
+		co_yield NameTypeRecord{row[0], row[1]};
 }
 
-void
+std::size_t
 StickerDatabase::BatchDeleteNoIdle(const std::list<StickerTypeUriPair> &stickers)
 {
 	sqlite3_stmt *const s = stmt[STICKER_SQL_DELETE];
@@ -538,6 +516,7 @@ StickerDatabase::BatchDeleteNoIdle(const std::list<StickerTypeUriPair> &stickers
 	try {
 		ExecuteBusy(begin);
 
+		std::size_t n_deleted = 0;
 		for (auto &sticker: stickers) {
 			AtScopeExit(s) {
 				sqlite3_reset(s);
@@ -547,9 +526,13 @@ StickerDatabase::BatchDeleteNoIdle(const std::list<StickerTypeUriPair> &stickers
 			BindAll(s, sticker.first.c_str(), sticker.second.c_str());
 
 			ExecuteCommand(s);
+
+			++n_deleted;
 		}
 
 		ExecuteBusy(commit);
+
+		return n_deleted;
 	} catch (...) {
 		// "If the transaction has already been rolled back automatically by the error response,
 		// then the ROLLBACK command will fail with an error, but no harm is caused by this."

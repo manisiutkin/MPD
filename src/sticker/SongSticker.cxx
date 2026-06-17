@@ -6,7 +6,9 @@
 #include "Database.hxx"
 #include "song/LightSong.hxx"
 #include "db/Interface.hxx"
+#include "co/Generator.hxx"
 #include "util/AllocatedString.hxx"
+#include "util/StringCompare.hxx"
 
 #include <string.h>
 #include <stdlib.h>
@@ -75,64 +77,32 @@ sticker_song_get(StickerDatabase &db, const LightSong &song)
 	return db.Load("song", uri.c_str());
 }
 
-namespace {
-struct sticker_song_find_data {
-	const Database *db;
-	const char *base_uri;
-	size_t base_uri_length;
-
-	void (*func)(const LightSong &song, const char *value,
-		     void *user_data);
-	void *user_data;
-};
-} // namespace
-
-static void
-sticker_song_find_cb(const char *uri, const char *value, void *user_data)
-{
-	auto *data =
-		(struct sticker_song_find_data *)user_data;
-
-	if (memcmp(uri, data->base_uri, data->base_uri_length) != 0)
-		/* should not happen, ignore silently */
-		return;
-
-	const Database *db = data->db;
-	try {
-		const LightSong *song = db->GetSong(uri);
-		data->func(*song, value, data->user_data);
-		db->ReturnSong(song);
-	} catch (...) {
-	}
-}
-
-void
+Co::Generator<FindSongStickerRecord>
 sticker_song_find(StickerDatabase &sticker_database, const Database &db,
-		  const char *base_uri, const char *name,
+		  std::string_view base_uri, const char *name,
 		  StickerOperator op, const char *value,
-		  const char *sort, bool descending, RangeArg window,
-		  void (*func)(const LightSong &song, const char *value,
-			       void *user_data),
-		  void *user_data)
+		  const char *sort, bool descending, RangeArg window)
 {
-	struct sticker_song_find_data data;
-	data.db = &db;
-	data.func = func;
-	data.user_data = user_data;
-
 	AllocatedString allocated;
-	data.base_uri = base_uri;
-	if (*data.base_uri != 0) {
+	if (!base_uri.empty()) {
 		/* append slash to base_uri */
-		allocated = AllocatedString{std::string_view{data.base_uri}, "/"sv};
-		data.base_uri = allocated.c_str();
+		allocated = AllocatedString{base_uri, "/"sv};
+		base_uri = allocated.c_str();
 	} else {
 		/* searching in root directory - no trailing slash */
 	}
 
-	data.base_uri_length = strlen(data.base_uri);
+	for (const auto &i : sticker_database.Find("song", base_uri, name, op, value,
+						   sort, descending, window)) {
+		if (!StringStartsWith(i.uri, base_uri))
+			/* should not happen, ignore silently */
+			continue;
 
-	sticker_database.Find("song", data.base_uri, name, op, value,
-				  sort, descending, window,
-			      sticker_song_find_cb, &data);
+		try {
+			const LightSong *song = db.GetSong(i.uri);
+			co_yield FindSongStickerRecord{*song, i.value};
+			db.ReturnSong(song);
+		} catch (...) {
+		}
+	}
 }

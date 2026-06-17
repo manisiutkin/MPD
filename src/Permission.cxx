@@ -7,13 +7,18 @@
 #include "config/Data.hxx"
 #include "config/Option.hxx"
 #include "lib/fmt/RuntimeError.hxx"
-#include "net/AddressInfo.hxx"
-#include "net/Resolver.hxx"
-#include "net/ToString.hxx"
 #include "util/IterableSplitString.hxx"
 #include "util/StringSplit.hxx"
 
+#ifdef HAVE_TCP
+#include "net/AddressInfo.hxx"
+#include "net/MaskedInetAddress.hxx"
+#include "net/Resolver.hxx"
+#include "net/ToString.hxx"
+#endif
+
 #include <cassert>
+#include <forward_list>
 #include <map>
 #include <string>
 #include <utility>
@@ -42,7 +47,13 @@ static unsigned local_permissions;
 #endif
 
 #ifdef HAVE_TCP
-static std::map<std::string, unsigned, std::less<>> host_passwords;
+struct HostPermissions {
+	MaskedInetAddress address;
+
+	unsigned permissions;
+};
+
+static std::forward_list<HostPermissions> host_permissions;
 #endif
 
 static unsigned
@@ -117,10 +128,16 @@ initPermissions(const ConfigData &config)
 
 			const std::string host_s{host_sv};
 
-			for (const auto &i : Resolve(host_s.c_str(), 0,
-						     AI_PASSIVE, SOCK_STREAM))
-				host_passwords.emplace(HostToString(i),
-						       permissions);
+			MaskedInetAddress masked_address;
+			if (masked_address.Parse(host_s.c_str())) {
+				host_permissions.emplace_front(masked_address, permissions);
+			} else {
+				for (const auto &i : Resolve(host_s.c_str(), 0,
+							     AI_PASSIVE, SOCK_STREAM)) {
+					if (masked_address.CopyFrom(i, 0))
+						host_permissions.emplace_front(masked_address, permissions);
+				}
+			}
 		});
 	}
 #endif
@@ -129,11 +146,15 @@ initPermissions(const ConfigData &config)
 #ifdef HAVE_TCP
 
 int
-GetPermissionsFromAddress(SocketAddress address) noexcept
+GetPermissionsFromAddress(SocketAddress _address) noexcept
 {
-	if (auto i = host_passwords.find(HostToString(address));
-	    i != host_passwords.end())
-		return i->second;
+	BareInetAddress address;
+	if (!address.CopyFrom(_address))
+		return -1;
+
+	for (const auto &i : host_permissions)
+		if (i.address.Matches(address))
+			return i.permissions;
 
 	return -1;
 }

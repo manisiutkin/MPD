@@ -29,6 +29,7 @@
 #include "db/DatabaseLock.hxx"
 #include <fmt/format.h>
 #include "song/Filter.hxx"
+#include "co/Generator.hxx"
 
 namespace {
 
@@ -38,7 +39,7 @@ public:
 
 	virtual CommandResult Get(const char *uri, const char *name) {
 		const auto value = sticker_database.LoadValue(sticker_type,
-							      ValidateUri(uri).c_str(),
+							      ValidateUri(uri),
 							      name);
 		if (value.empty()) {
 			response.FmtError(ACK_ERROR_NO_EXIST, "no such sticker: {:?}", name);
@@ -52,7 +53,7 @@ public:
 
 	virtual CommandResult Set(const char *uri, const char *name, const char *value) {
 		sticker_database.StoreValue(sticker_type,
-					    ValidateUri(uri).c_str(),
+					    ValidateUri(uri),
 					    name,
 					    value);
 
@@ -61,7 +62,7 @@ public:
 
 	virtual CommandResult Inc(const char *uri, const char *name, const char *value) {
 		sticker_database.IncValue(sticker_type,
-					  ValidateUri(uri).c_str(),
+					  ValidateUri(uri),
 					  name,
 					  value);
 
@@ -70,7 +71,7 @@ public:
 
 	virtual CommandResult Dec(const char *uri, const char *name, const char *value) {
 		sticker_database.DecValue(sticker_type,
-					  ValidateUri(uri).c_str(),
+					  ValidateUri(uri),
 					  name,
 					  value);
 
@@ -79,10 +80,9 @@ public:
 
 	virtual CommandResult Delete(const char *uri, const char *name) {
 		std::string validated_uri = ValidateUri(uri);
-		uri = validated_uri.c_str();
 		bool ret = name == nullptr
-			   ? sticker_database.Delete(sticker_type, uri)
-			   : sticker_database.DeleteValue(sticker_type, uri, name);
+			   ? sticker_database.Delete(sticker_type, validated_uri)
+			   : sticker_database.DeleteValue(sticker_type, validated_uri, name);
 		if (!ret) {
 			response.FmtError(ACK_ERROR_NO_EXIST, "no such sticker: {:?}", name);
 			return CommandResult::ERROR;
@@ -93,71 +93,38 @@ public:
 
 	virtual CommandResult List(const char *uri) {
 		const auto sticker = sticker_database.Load(sticker_type,
-							   ValidateUri(uri).c_str());
+							   ValidateUri(uri));
 		sticker_print(response, sticker);
 
 		return CommandResult::OK;
 	}
 
-	virtual CommandResult Find(const char *uri, const char *name, StickerOperator op, const char *value,
+	virtual CommandResult Find(std::string_view uri, const char *name, StickerOperator op, const char *value,
 			const char *sort, bool descending, RangeArg window) {
-		auto data = CallbackContext{
-			.name = name,
-			.sticker_type = sticker_type,
-			.response = response,
-			.is_song = StringIsEqual("song", sticker_type)
-		};
+		const bool is_song = StringIsEqual("song", sticker_type);
 
-		auto callback = [](const char *found_uri, const char *found_value, void *user_data) {
-			auto context = reinterpret_cast<CallbackContext *>(user_data);
-			context->response.Fmt("{}: {}\n",
- 					      context->is_song ? "file" : context->sticker_type, found_uri);
-			sticker_print_value(context->response, context->name, found_value);
-		};
-
-		sticker_database.Find(sticker_type,
-				      uri,
-				      name,
-				      op, value,
-					  sort, descending, window,
-				      callback, &data);
+		for (const auto &i : sticker_database.Find(sticker_type, uri,
+							   name, op, value,
+							   sort, descending, window)) {
+			response.Fmt("{}: {}\n", is_song ? "file" : sticker_type, i.uri);
+			sticker_print_value(response, name, i.value);
+		}
 
 		return CommandResult::OK;
 	}
 
 	virtual CommandResult Names() {
-		auto data = CallbackContext{
-			.name = "",
-			.sticker_type = sticker_type,
-			.response = response,
-			.is_song = StringIsEqual("song", sticker_type)
-		};
-
-		auto callback = [](const char *found_value, void *user_data) {
-			auto context = reinterpret_cast<CallbackContext *>(user_data);
-			context->response.Fmt("name: {}\n", found_value);
-		};
-
-		sticker_database.Names(callback, &data);
+		for (const char *name : sticker_database.Names())
+			response.Fmt("name: {}\n", name);
 
 		return CommandResult::OK;
 	}
 
 	CommandResult NamesTypes(const char *type) {
-		auto data = CallbackContext{
-			.name = "",
-			.sticker_type = sticker_type,
-			.response = response,
-			.is_song = StringIsEqual("song", sticker_type)
-		};
-
-		auto callback = [](const char *found_value, const char *found_type, void *user_data) {
-			auto context = reinterpret_cast<CallbackContext *>(user_data);
-			context->response.Fmt("name: {}\n", found_value);
-			context->response.Fmt("type: {}\n", found_type);
-		};
-
-		sticker_database.NamesTypes(type, callback, &data);
+		for (const auto &i : sticker_database.NamesTypes(type)) {
+			response.Fmt("name: {}\n", i.value);
+			response.Fmt("type: {}\n", i.type);
+		}
 
 		return CommandResult::OK;
 	}
@@ -188,14 +155,6 @@ protected:
 	Response &response;
 	const Database &database;
 	StickerDatabase &sticker_database;
-
-private:
-	struct CallbackContext {
-		const char *const name;
-		const char *const sticker_type;
-		Response &response;
-		const bool is_song;
-	};
 };
 
 /**
@@ -214,17 +173,14 @@ public:
 			database.ReturnSong(song);
 	}
 
-	CommandResult Find(const char *uri, const char *name, StickerOperator op, const char *value,
+	CommandResult Find(std::string_view uri, const char *name, StickerOperator op, const char *value,
 			const char *sort, bool descending, RangeArg window) override {
-		struct sticker_song_find_data data = {
-			response,
-			name,
-		};
-
-		sticker_song_find(sticker_database, database, uri, data.name,
-				  op, value,
-				  sort, descending, window,
-				  sticker_song_find_print_cb, &data);
+		for (const auto &i : sticker_song_find(sticker_database, database, uri, name,
+						       op, value,
+						       sort, descending, window)) {
+			song_print_uri(response, i.song);
+			sticker_print_value(response, name, i.value);
+		}
 
 		return CommandResult::OK;
 	}
@@ -238,21 +194,6 @@ protected:
 	}
 
 private:
-	struct sticker_song_find_data {
-		Response &r;
-		const char *name;
-	};
-
-	static void
-	sticker_song_find_print_cb(const LightSong &song, const char *value,
-				   void *user_data)
-	{
-		auto *data = (struct sticker_song_find_data *)user_data;
-
-		song_print_uri(data->r, song);
-		sticker_print_value(data->r, data->name, value);
-	}
-
 	const LightSong* song = nullptr;
 };
 

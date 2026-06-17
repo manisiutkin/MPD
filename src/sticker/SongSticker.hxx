@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright The Music Player Daemon Project
 
-#ifndef MPD_SONG_STICKER_HXX
-#define MPD_SONG_STICKER_HXX
+#pragma once
 
 #include "Match.hxx"
 #include "protocol/RangeArg.hxx"
 
 #include <string>
 
+namespace Co { template<typename T> class Generator; }
 struct LightSong;
 struct Sticker;
 class Database;
@@ -88,6 +88,11 @@ sticker_song_delete_value(StickerDatabase &db,
 Sticker
 sticker_song_get(StickerDatabase &db, const LightSong &song);
 
+struct FindSongStickerRecord {
+	const LightSong &song;
+	const char *value;
+};
+
 /**
  * Finds stickers with the specified name below the specified
  * directory.
@@ -99,13 +104,8 @@ sticker_song_get(StickerDatabase &db, const LightSong &song);
  * @param base_uri the base directory to search in
  * @param name the name of the sticker
  */
-void
+Co::Generator<FindSongStickerRecord>
 sticker_song_find(StickerDatabase &sticker_database, const Database &db,
-		  const char *base_uri, const char *name,
+		  std::string_view base_uri, const char *name,
 		  StickerOperator op, const char *value,
-		  const char *sort, bool descending, RangeArg window,
-		  void (*func)(const LightSong &song, const char *value,
-			       void *user_data),
-		  void *user_data);
-
-#endif
+		  const char *sort, bool descending, RangeArg window);

@@ -97,9 +97,16 @@ public:
 		address.ss_family = AF_UNSPEC;
 	}
 
+	[[gnu::pure]]
+	bool IsValid() const noexcept {
+		return static_cast<const SocketAddress>(*this).IsValid();
+	}
+
+#ifdef HAVE_TCP
 	constexpr bool IsInet() const noexcept {
 		return GetFamily() == AF_INET || GetFamily() == AF_INET6;
 	}
+#endif // HAVE_TCP
 
 #ifdef HAVE_UN
 	/**
