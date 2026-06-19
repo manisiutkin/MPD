@@ -1,6 +1,6 @@
 #pragma once
 
-#if __cplusplus >= 202002L
+#if ((defined(__GNUC__) && __GNUC__ < 16) || !defined(__GNUC__)) && __cplusplus >= 202002L
 
 #include <semaphore>
 using semaphore_t = std::binary_semaphore;
